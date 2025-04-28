@@ -1,0 +1,23 @@
+# Core dependencies
+Flask==2.3.3
+Werkzeug==2.3.7
+python-dotenv==1.0.0
+boto3==1.28.44
+aws-wsgi==0.2.7
+psycopg2-binary==2.9.7
+
+# AWS CDK related
+aws-cdk-lib==2.96.2
+constructs>=10.0.0
+aws-cdk.aws-lambda-python-alpha==2.96.2a0
+
+# Development dependencies
+pytest==7.4.2
+black==23.7.0
+flake8==6.1.0
+mypy==1.5.1
+isort==5.12.0
+
+# Type stubs for better IDE support
+types-boto3==1.0.2
+types-psycopg2==2.9.21.11
