@@ -192,12 +192,28 @@ case $CMD in
             
             # Build frontend
             cd frontend
+            # Ensure local environment variables are set
+            export REACT_APP_ENVIRONMENT=local
+            export REACT_APP_API_URL=http://localhost:8000
             npm install
             npm run build:local
             cd ..
         else
             # Production build
             cd frontend
+            # Ensure production environment variables are set
+            export REACT_APP_ENVIRONMENT=prod
+            # Get API URL from .env.prod file
+            if [ -f .env.prod ]; then
+                export REACT_APP_API_URL=$(grep REACT_APP_API_URL .env.prod | cut -d '=' -f2)
+                if [ -z "$REACT_APP_API_URL" ]; then
+                    echo "❌ Error: REACT_APP_API_URL not found in .env.prod file"
+                    exit 1
+                fi
+            else
+                echo "❌ Error: .env.prod file not found"
+                exit 1
+            fi
             npm install
             npm run build:prod
             cd ..
@@ -214,6 +230,10 @@ case $CMD in
                 echo "❌ Error: Docker services are not running. Run './build.sh local setup' first."
                 exit 1
             fi
+            
+            # Ensure local environment variables are set
+            export REACT_APP_ENVIRONMENT=local
+            export REACT_APP_API_URL=http://localhost:8000
             
             # Start backend server
             cd backend
@@ -237,6 +257,20 @@ case $CMD in
     "deploy")
         if [ "$ENV" = "prod" ]; then
             echo "Deploying to production..."
+            # Ensure production environment variables are set
+            export REACT_APP_ENVIRONMENT=prod
+            # Get API URL from .env.prod file
+            if [ -f .env.prod ]; then
+                export REACT_APP_API_URL=$(grep REACT_APP_API_URL .env.prod | cut -d '=' -f2)
+                if [ -z "$REACT_APP_API_URL" ]; then
+                    echo "❌ Error: REACT_APP_API_URL not found in .env.prod file"
+                    exit 1
+                fi
+            else
+                echo "❌ Error: .env.prod file not found"
+                exit 1
+            fi
+            
             # Add production deployment steps here
             cd infrastructure
             npm install

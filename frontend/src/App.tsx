@@ -18,6 +18,7 @@ function App() {
   console.log('App component - Authentication status:', authenticated);
   console.log('Environment:', process.env.REACT_APP_ENVIRONMENT);
   console.log('API URL:', process.env.REACT_APP_API_URL);
+  console.log('Is local development:', process.env.REACT_APP_ENVIRONMENT === 'local');
 
   return (
     <Router>

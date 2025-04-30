@@ -2,7 +2,13 @@ import { signIn, signUp, confirmSignUp } from 'aws-amplify/auth';
 
 // Check if we're in a local development environment
 const isLocalDevelopment = process.env.REACT_APP_ENVIRONMENT === 'local';
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+// Validate required environment variables
+if (!process.env.REACT_APP_API_URL) {
+  throw new Error('REACT_APP_API_URL environment variable is required but not set');
+}
+
+const API_URL = process.env.REACT_APP_API_URL;
 
 // Local authentication functions
 const localLogin = async (email: string, password: string) => {
