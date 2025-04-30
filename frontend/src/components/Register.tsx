@@ -1,24 +1,20 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signUp, confirmSignUp } from 'aws-amplify/auth';
+import { register, setToken, confirmRegistration } from '../services/auth';
 import '../styles/auth.css';
 
 interface RegisterFormData {
-  username: string;
   email: string;
-  firstName: string;
-  lastName: string;
   password: string;
+  name: string;
 }
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState<RegisterFormData>({
-    username: '',
     email: '',
-    firstName: '',
-    lastName: '',
     password: '',
+    name: '',
   });
   const [confirmationCode, setConfirmationCode] = useState('');
   const [error, setError] = useState('');
@@ -39,18 +35,14 @@ const Register: React.FC = () => {
     setLoading(true);
 
     try {
-      await signUp({
-        username: formData.username,
-        password: formData.password,
-        options: {
-          userAttributes: {
-            email: formData.email,
-            given_name: formData.firstName,
-            family_name: formData.lastName,
-          }
-        }
-      });
-      setShowConfirmation(true);
+      const data = await register(formData.email, formData.password, formData.name);
+      
+      if (data.requiresConfirmation) {
+        setShowConfirmation(true);
+      } else {
+        setToken(data.token);
+        navigate('/dashboard');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred during registration');
     } finally {
@@ -64,10 +56,7 @@ const Register: React.FC = () => {
     setLoading(true);
 
     try {
-      await confirmSignUp({
-        username: formData.username,
-        confirmationCode: confirmationCode
-      });
+      await confirmRegistration(formData.email, confirmationCode);
       navigate('/login');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred during confirmation');
@@ -106,17 +95,6 @@ const Register: React.FC = () => {
       {error && <div className="error-message">{error}</div>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="username">Username</label>
-          <input
-            type="text"
-            id="username"
-            name="username"
-            value={formData.username}
-            onChange={handleChange}
-            required
-          />
-        </div>
-        <div className="form-group">
           <label htmlFor="email">Email</label>
           <input
             type="email"
@@ -128,23 +106,12 @@ const Register: React.FC = () => {
           />
         </div>
         <div className="form-group">
-          <label htmlFor="firstName">First Name</label>
+          <label htmlFor="name">Name</label>
           <input
             type="text"
-            id="firstName"
-            name="firstName"
-            value={formData.firstName}
-            onChange={handleChange}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="lastName">Last Name</label>
-          <input
-            type="text"
-            id="lastName"
-            name="lastName"
-            value={formData.lastName}
+            id="name"
+            name="name"
+            value={formData.name}
             onChange={handleChange}
             required
           />

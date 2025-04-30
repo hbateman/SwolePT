@@ -6,14 +6,18 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import PrivateRoute from './components/PrivateRoute';
+import { isAuthenticated } from './services/auth';
 import './App.css';
 
-// Configure Amplify
+// Configure Amplify with the unified configuration
 Amplify.configure(awsconfig);
 
 function App() {
-  // TODO: Replace this with real authentication logic
-  const isAuthenticated = true;
+  // Check if user is authenticated using our service
+  const authenticated = isAuthenticated();
+  console.log('App component - Authentication status:', authenticated);
+  console.log('Environment:', process.env.REACT_APP_ENVIRONMENT);
+  console.log('API URL:', process.env.REACT_APP_API_URL);
 
   return (
     <Router>
@@ -24,7 +28,7 @@ function App() {
           <Route 
             path="/dashboard" 
             element={
-              <PrivateRoute isAuthenticated={isAuthenticated}>
+              <PrivateRoute isAuthenticated={authenticated}>
                 <Dashboard />
               </PrivateRoute>
             } 

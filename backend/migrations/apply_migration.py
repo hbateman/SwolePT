@@ -5,10 +5,10 @@ import boto3
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from botocore.config import Config
+from dotenv import load_dotenv
 
 # Try to load environment variables from .env file
 try:
-    from dotenv import load_dotenv
     # Load environment variables from .env file
     load_dotenv()
     print("Loaded environment variables from .env file")
@@ -19,97 +19,118 @@ except Exception as e:
     # Handle other exceptions when loading .env file
     print(f"Error loading .env file: {str(e)}")
 
-def get_db_connection():
-    """
-    Get a connection to the RDS database using IAM authentication
-    """
+def load_environment():
+    """Load environment variables from .env file."""
+    # Get the project root directory (two levels up from this script)
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    env_path = os.path.join(project_root, '.env')
+    
+    if not os.path.exists(env_path):
+        print(f"❌ Error: .env file not found at {env_path}")
+        sys.exit(1)
+    
+    load_dotenv(env_path)
+    print("Loaded environment variables from .env file")
+
+def get_db_connection(database_name=None):
+    """Get a database connection."""
     try:
-        # Get database connection details from environment variables
-        host = os.environ.get('DATABASE_HOST')
-        port = os.environ.get('DATABASE_PORT', '5432')
-        database = os.environ.get('DATABASE_NAME')
-        user = os.environ.get('DATABASE_USER')
-        region = os.environ.get('AWS_REGION', 'ap-southeast-2')
-
-        # Check if required environment variables are set
-        required_vars = ['DATABASE_HOST', 'DATABASE_NAME', 'DATABASE_USER']
-        missing_vars = [var for var in required_vars if not os.environ.get(var)]
-        if missing_vars:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
-
-        # Create an RDS client
-        rds_client = boto3.client(
-            'rds',
-            region_name=region,
-            config=Config(signature_version='v4')
-        )
-
-        # Generate an authentication token
-        auth_token = rds_client.generate_db_auth_token(
-            DBHostname=host,
-            Port=int(port),
-            DBUsername=user,
-            Region=region
-        )
-
-        # Create connection
-        conn = psycopg2.connect(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=auth_token,
-            sslmode='require'
-        )
+        # Use the specified database name or default to environment variable
+        db_name = database_name or os.getenv('RDS_DATABASE_NAME')
         
+        conn = psycopg2.connect(
+            host=os.getenv('DATABASE_HOST'),
+            port=os.getenv('DATABASE_PORT'),
+            user=os.getenv('RDS_DATABASE_USER'),
+            password=os.getenv('RDS_DATABASE_PASSWORD'),
+            database=db_name if database_name else 'postgres',
+            sslmode='disable'  # Disable SSL for local development
+        )
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         return conn
     except Exception as e:
         print(f"Error connecting to database: {str(e)}")
-        raise
+        return None
 
-def apply_migration(migration_file, direction="up"):
-    """
-    Apply a migration file to the database
-    
-    Args:
-        migration_file (str): Path to the migration file
-        direction (str): Either "up" or "down" to indicate migration direction
-    """
-    conn = None
+def create_database():
+    """Create the database if it doesn't exist."""
     try:
-        # Read the migration file
+        # Connect to default postgres database
+        conn = get_db_connection('postgres')
+        if not conn:
+            return False
+        
+        cur = conn.cursor()
+        
+        # Check if database exists
+        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (os.getenv('RDS_DATABASE_NAME'),))
+        exists = cur.fetchone()
+        
+        if not exists:
+            print(f"Creating database {os.getenv('RDS_DATABASE_NAME')}...")
+            cur.execute(f"CREATE DATABASE {os.getenv('RDS_DATABASE_NAME')}")
+            print("✅ Database created successfully")
+        else:
+            print(f"Database {os.getenv('RDS_DATABASE_NAME')} already exists")
+        
+        cur.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ Error creating database: {str(e)}")
+        return False
+
+def apply_migration(migration_file, direction='up'):
+    """Apply a migration file."""
+    try:
+        # Read migration file
         with open(migration_file, 'r') as f:
             sql = f.read()
         
-        # Connect to the database
+        # Connect to database
         conn = get_db_connection()
-        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        if not conn:
+            print("❌ Failed to connect to database")
+            return False
         
-        # Execute the migration
-        cursor = conn.cursor()
-        cursor.execute(sql)
+        # Execute migration
+        cur = conn.cursor()
+        cur.execute(sql)
+        cur.close()
+        conn.close()
         
-        print(f"Successfully applied {direction} migration: {migration_file}")
+        print(f"✅ Successfully applied {direction} migration: {migration_file}")
+        return True
     except Exception as e:
-        print(f"Error applying {direction} migration: {str(e)}")
-        if conn:
-            conn.rollback()
-        raise
-    finally:
-        if conn:
-            conn.close()
+        print(f"❌ Error applying {direction} migration: {str(e)}")
+        return False
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print("Usage: python apply_migration.py <migration_file> [up|down]")
-        print("  If direction is not specified, 'up' is assumed")
+def main():
+    """Main function."""
+    # Load environment variables
+    load_environment()
+    
+    # Get migration file from command line arguments
+    if len(sys.argv) != 3:
+        print("Usage: python apply_migration.py <migration_file> <direction>")
         sys.exit(1)
     
     migration_file = sys.argv[1]
-    direction = sys.argv[2] if len(sys.argv) == 3 else "up"
+    direction = sys.argv[2]
     
-    if direction not in ["up", "down"]:
-        print("Direction must be either 'up' or 'down'")
+    if not os.path.exists(migration_file):
+        print(f"❌ Error: Migration file {migration_file} not found")
         sys.exit(1)
     
-    apply_migration(migration_file, direction) 
+    # Create database if it doesn't exist
+    print("Creating database if it doesn't exist...")
+    if not create_database():
+        sys.exit(1)
+    
+    # Apply migration
+    print(f"Applying {direction} migration...")
+    if not apply_migration(migration_file, direction):
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main() 

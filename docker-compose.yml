@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: swolept-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=lambda,s3,cognito,apigateway
+      - DEBUG=1
+      - DATA_DIR=/var/lib/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - LAMBDA_EXECUTOR=docker
+      - LAMBDA_REMOTE_DOCKER=false
+      - DOCKER_LAMBDA_STAY_OPEN=1
+      - TMPDIR=/var/lib/localstack/tmp
+    volumes:
+      - localstack_data:/var/lib/localstack/data
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./backend/functions:/docker-entrypoint-initaws.d/functions"  # Mount Lambda functions
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - swolept-network
+    labels:
+      - "com.swolept.service=localstack"
+      - "com.swolept.environment=local"
+
+  postgres:
+    image: postgres:13
+    container_name: swolept-postgres
+    environment:
+      - POSTGRES_DB=${RDS_DATABASE_NAME}
+      - POSTGRES_USER=${RDS_DATABASE_USER}
+      - POSTGRES_PASSWORD=${RDS_DATABASE_PASSWORD}
+    ports:
+      - "${DATABASE_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${RDS_DATABASE_USER} -d ${RDS_DATABASE_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - swolept-network
+    labels:
+      - "com.swolept.service=postgres"
+      - "com.swolept.environment=local"
+
+networks:
+  swolept-network:
+    name: swolept-network
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: swolept-postgres-data
+  localstack_data:
+    name: swolept-localstack-data 

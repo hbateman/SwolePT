@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signIn } from 'aws-amplify/auth';
+import { login, setToken } from '../services/auth';
+import '../styles/auth.css';
 
 const Login: React.FC = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,11 +16,16 @@ const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      await signIn({ username, password });
+      console.log('Attempting to login with:', { email });
+      const data = await login(email, password);
+      console.log('Login successful, received data:', data);
+      setToken(data.token);
+      console.log('Token set in localStorage');
       navigate('/dashboard');
+      console.log('Navigation to dashboard triggered');
     } catch (err) {
       console.error('Error signing in:', err);
-      setError('Invalid username or password');
+      setError(err instanceof Error ? err.message : 'Invalid email or password');
     } finally {
       setLoading(false);
     }
@@ -31,12 +37,12 @@ const Login: React.FC = () => {
       {error && <div className="error-message">{error}</div>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="username">Username</label>
+          <label htmlFor="email">Email</label>
           <input
-            type="text"
-            id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            type="email"
+            id="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
         </div>
