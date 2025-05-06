@@ -3,9 +3,10 @@ import os
 import datetime
 from functools import wraps
 from flask import request, jsonify
+from local_db import init_db, create_user, get_user, verify_password
 
-# In-memory user store for local development
-users = {}
+# Initialize the database
+init_db()
 
 def generate_token(user_id, email):
     """Generate a JWT token for local development."""
@@ -52,15 +53,9 @@ def require_auth(f):
 
 def register_user(email, password):
     """Register a new user locally."""
-    if email in users:
-        return {'error': 'User already exists'}, 400
-    
-    user_id = str(len(users) + 1)
-    users[email] = {
-        'id': user_id,
-        'email': email,
-        'password': password  # In production, this would be hashed
-    }
+    user_id, error = create_user(email, password)
+    if error:
+        return {'error': error}, 400
     
     token = generate_token(user_id, email)
     return {
@@ -73,8 +68,8 @@ def register_user(email, password):
 
 def login_user(email, password):
     """Login a user locally."""
-    user = users.get(email)
-    if not user or user['password'] != password:
+    user = get_user(email)
+    if not user or not verify_password(user, password):
         return {'error': 'Invalid credentials'}, 401
     
     token = generate_token(user['id'], email)
