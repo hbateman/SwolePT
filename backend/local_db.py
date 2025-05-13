@@ -9,16 +9,37 @@ from datetime import datetime
 def get_db_connection():
     """Get a connection to the local PostgreSQL database."""
     try:
+        # Get database configuration from environment variables
+        db_host = os.getenv('DATABASE_HOST', 'localhost')
+        db_port = os.getenv('DATABASE_PORT', '5432')
+        db_name = os.getenv('DATABASE_NAME', os.getenv('RDS_DATABASE_NAME', 'swolept'))
+        db_user = os.getenv('DATABASE_USER', os.getenv('RDS_DATABASE_USER', 'hugo'))
+        db_password = os.getenv('DATABASE_PASSWORD', os.getenv('RDS_DATABASE_PASSWORD', ''))
+        
+        print("Attempting to connect to database with parameters:")
+        print(f"host={db_host}")
+        print(f"port={db_port}")
+        print(f"dbname={db_name}")
+        print(f"user={db_user}")
+        print(f"password={'*' * len(db_password) if db_password else ''}")
+        
         conn = psycopg2.connect(
-            host=os.getenv('DATABASE_HOST', 'localhost'),
-            port=os.getenv('DATABASE_PORT', '5432'),
-            database='swolept',  # Use our local database name
-            user=os.getenv('DB_USER', os.getenv('USER')),  # Default to system user
-            password=os.getenv('DB_PASSWORD', '')  # Empty password for local development
+            host=db_host,
+            port=db_port,
+            dbname=db_name,
+            user=db_user,
+            password=db_password,
+            connect_timeout=10
         )
+        print("Successfully connected to database")
         return conn
+    except psycopg2.OperationalError as e:
+        print(f"Database connection error: {str(e)}")
+        print(f"Error code: {e.pgcode}")
+        print(f"Error message: {e.pgerror}")
+        raise
     except Exception as e:
-        print(f"Error connecting to database: {str(e)}")
+        print(f"Unexpected error connecting to database: {str(e)}")
         raise
 
 def verify_db_ready():

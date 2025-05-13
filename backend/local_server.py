@@ -4,12 +4,13 @@ import os
 from dotenv import load_dotenv
 import boto3
 from local_auth import register_user, login_user, require_auth
-from local_db import process_workout_csv, verify_db_ready
+from local_db import process_workout_csv, verify_db_ready, get_db_connection
 import jwt
 from datetime import datetime, timedelta
+from psycopg2.extras import RealDictCursor
 
 # Load environment variables
-load_dotenv()
+load_dotenv('.env.local')
 
 # Get JWT secret from environment variables
 JWT_SECRET = os.getenv('JWT_SECRET')
@@ -99,6 +100,42 @@ def upload_file():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/workout-history', methods=['GET'])
+@require_auth
+def get_workout_history():
+    conn = None
+    try:
+        user_id = request.user['sub']
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Fetch workout history for the user
+        cursor.execute("""
+            SELECT 
+                id, date, exercise, category, 
+                weight, weight_unit, reps, 
+                distance, distance_unit, time, comment,
+                created_at
+            FROM workout_history 
+            WHERE user_id = %s 
+            ORDER BY date DESC, created_at DESC
+        """, (user_id,))
+        
+        workouts = cursor.fetchall()
+        
+        # Convert datetime objects to strings for JSON serialization
+        for workout in workouts:
+            workout['date'] = workout['date'].isoformat()
+            workout['created_at'] = workout['created_at'].isoformat()
+        
+        return jsonify(workouts)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
 
 if __name__ == '__main__':
     port = int(os.getenv('BACKEND_PORT', 8000))
