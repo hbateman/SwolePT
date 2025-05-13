@@ -75,3 +75,7 @@ cdk.out/
 .env.development
 .env.test
 .env.production
+
+# PID
+*.pid
+*.PID
