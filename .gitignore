@@ -68,3 +68,9 @@ cdk.out/
 
 # Misc
 *.log
+
+# Environment variables
+.env.prod
+.env.development
+.env.test
+.env.production

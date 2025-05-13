@@ -45,36 +45,30 @@ function check_service_health {
     return 1
 }
 
-# Function to stop running application processes
+# Function to stop any running application processes
 function stop_running_app {
-    echo "Checking for running application processes..."
-    
-    # Check for running backend server
-    if pgrep -f "python.*local_server.py" > /dev/null; then
-        echo "Stopping backend server..."
-        pkill -f "python.*local_server.py"
-        sleep 2
+    echo "Stopping any running application processes..."
+    if [ -f .backend.pid ]; then
+        kill $(cat .backend.pid) 2>/dev/null || true
+        rm .backend.pid
     fi
-    
-    # Check for running frontend server
-    if pgrep -f "node.*react-scripts" > /dev/null; then
-        echo "Stopping frontend server..."
-        pkill -f "node.*react-scripts"
-        sleep 2
+    if [ -f .frontend.pid ]; then
+        kill $(cat .frontend.pid) 2>/dev/null || true
+        rm .frontend.pid
     fi
-    
-    echo "✅ All application processes stopped"
 }
 
-# Check if environment and command arguments are provided
-if [ $# -lt 2 ]; then
-    show_usage
+# Check if environment is specified
+if [ -z "$1" ]; then
+    echo "❌ Error: Environment not specified"
+    echo "Usage: ./build.sh <environment> <command>"
+    echo "Environments: local, dev, prod"
+    echo "Commands: setup, start, stop, test"
     exit 1
 fi
 
-# Get the environment and command arguments
 ENV=$1
-CMD=$2
+COMMAND=$2
 
 # Function to switch environment
 function switch_environment {
@@ -134,89 +128,41 @@ fi
 switch_environment $ENV
 
 # Execute the command
-case $CMD in
+case $COMMAND in
     "setup")
+        echo "Setting up the application..."
         if [ "$ENV" = "local" ]; then
-            echo "Setting up local development environment..."
+            # Install backend dependencies
+            echo "Installing backend dependencies..."
+            cd backend
+            pip install -r requirements.txt
+            cd ..
             
-            # Stop any existing containers
-            echo "Stopping existing containers..."
-            docker-compose down -v || true
+            # Install frontend dependencies
+            echo "Installing frontend dependencies..."
+            cd frontend
+            npm install
+            cd ..
             
             # Start Docker services
             echo "Starting Docker services..."
             docker-compose up -d
             
-            # Check service health
-            check_service_health postgres || exit 1
-            check_service_health localstack || exit 1
-            
-            # Install dependencies
-            echo "Installing Python dependencies..."
-            pip install -r backend/requirements.txt
-            pip install flask localstack-client
-            
-            # Setup local AWS services
-            echo "Setting up local AWS services..."
-            if [ -f backend/local_setup.py ]; then
-                python backend/local_setup.py
-            else
-                echo "❌ Error: backend/local_setup.py not found"
-                exit 1
-            fi
+            # Wait for services to be ready
+            echo "Waiting for services to be ready..."
+            sleep 10
             
             # Run database migrations
             echo "Running database migrations..."
-            if [ -f backend/migrations/setup_local_db.sh ]; then
-                cd backend/migrations
-                ./setup_local_db.sh
-                cd ../..
-            else
-                echo "❌ Error: backend/migrations/setup_local_db.sh not found"
-                exit 1
-            fi
+            cd backend
+            export RDS_DATABASE_NAME=swolept
+            python migrations/apply_migration.py migrations/001_initial_schema.sql up
+            cd ..
             
-            echo "✅ Local development environment setup complete!"
+            echo "✅ Setup completed! You can now run './build.sh local start' to start the application."
         else
             echo "❌ Error: Setup command is only available for local environment"
             exit 1
-        fi
-        ;;
-    "build")
-        echo "Building the application..."
-        if [ "$ENV" = "local" ]; then
-            # Build backend
-            cd backend
-            pip install -r requirements.txt
-            cd ..
-            
-            # Build frontend
-            cd frontend
-            # Ensure local environment variables are set
-            export REACT_APP_ENVIRONMENT=local
-            export REACT_APP_API_URL=http://localhost:8000
-            npm install
-            npm run build:local
-            cd ..
-        else
-            # Production build
-            cd frontend
-            # Ensure production environment variables are set
-            export REACT_APP_ENVIRONMENT=prod
-            # Get API URL from .env.prod file
-            if [ -f .env.prod ]; then
-                export REACT_APP_API_URL=$(grep REACT_APP_API_URL .env.prod | cut -d '=' -f2)
-                if [ -z "$REACT_APP_API_URL" ]; then
-                    echo "❌ Error: REACT_APP_API_URL not found in .env.prod file"
-                    exit 1
-                fi
-            else
-                echo "❌ Error: .env.prod file not found"
-                exit 1
-            fi
-            npm install
-            npm run build:prod
-            cd ..
         fi
         ;;
     "start")
@@ -236,21 +182,70 @@ case $CMD in
             export REACT_APP_API_URL=http://localhost:8000
             
             # Start backend server
+            echo "Starting backend server..."
             cd backend
-            python local_server.py &
+            python local_server.py > backend.log 2>&1 &
             BACKEND_PID=$!
             cd ..
             
             # Start frontend
+            echo "Starting frontend server..."
             cd frontend
-            npm start &
+            npm start > frontend.log 2>&1 &
             FRONTEND_PID=$!
             cd ..
             
-            # Wait for processes
-            wait $BACKEND_PID $FRONTEND_PID
+            # Save PIDs to file for later cleanup
+            echo $BACKEND_PID > .backend.pid
+            echo $FRONTEND_PID > .frontend.pid
+            
+            echo "✅ Application started!"
+            echo "Backend running on http://localhost:8000"
+            echo "Frontend running on http://localhost:3000"
+            echo "Logs are available in backend.log and frontend.log"
+            
+            # Keep script running and handle cleanup on exit
+            trap 'kill $(cat .backend.pid) $(cat .frontend.pid) 2>/dev/null; rm -f .backend.pid .frontend.pid' EXIT
+            wait
         else
             echo "❌ Error: Start command is only available for local environment"
+            exit 1
+        fi
+        ;;
+    "stop")
+        echo "Stopping the application..."
+        if [ "$ENV" = "local" ]; then
+            # Stop any running application processes
+            stop_running_app
+            
+            # Stop Docker services
+            echo "Stopping Docker services..."
+            docker-compose down
+            
+            echo "✅ Application stopped!"
+        else
+            echo "❌ Error: Stop command is only available for local environment"
+            exit 1
+        fi
+        ;;
+    "test")
+        echo "Running tests..."
+        if [ "$ENV" = "local" ]; then
+            # Run backend tests
+            echo "Running backend tests..."
+            cd backend
+            python -m pytest
+            cd ..
+            
+            # Run frontend tests
+            echo "Running frontend tests..."
+            cd frontend
+            npm test
+            cd ..
+            
+            echo "✅ Tests completed!"
+        else
+            echo "❌ Error: Test command is only available for local environment"
             exit 1
         fi
         ;;
@@ -283,10 +278,12 @@ case $CMD in
         fi
         ;;
     *)
-        echo "❌ Error: Invalid command '$CMD'"
-        show_usage
+        echo "❌ Error: Unknown command '$COMMAND'"
+        echo "Usage: ./build.sh <environment> <command>"
+        echo "Environments: local, dev, prod"
+        echo "Commands: setup, start, stop, test"
         exit 1
         ;;
 esac
 
-echo "✅ Command '$CMD' completed successfully!" 
+echo "✅ Command '$COMMAND' completed successfully!" 

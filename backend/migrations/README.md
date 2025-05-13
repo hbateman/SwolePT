@@ -1,46 +1,43 @@
 # Database Migrations
 
-This directory contains database migration scripts for the SwolePT application.
+This directory contains the database migration files and tools for the SwolePT application.
 
-## Migration Files
+## Structure
 
-- `001_initial_schema.sql`: Creates the initial database schema with tables for users, workouts, and exercises.
-- `001_initial_schema_down.sql`: Rolls back the initial schema.
+- `001_initial_schema.sql`: Contains the complete database schema
+- `apply_migration.py`: Python script to apply migrations
+- `README.md`: This file
 
-## Applying Migrations
+## Usage
 
-To apply a migration, use the `apply_migration.py` script:
+To apply the database schema:
 
 ```bash
-# Set the required environment variables
-export DATABASE_HOST=your-database-host
-export DATABASE_PORT=5432
-export DATABASE_NAME=your-database-name
-export DATABASE_USER=your-database-user
-export DATABASE_PASSWORD=your-database-password
-
-# Apply an "up" migration (creates/updates schema)
-python apply_migration.py 001_initial_schema.sql up
-
-# Apply a "down" migration (rolls back changes)
-python apply_migration.py 001_initial_schema_down.sql down
+# From the backend directory
+python migrations/apply_migration.py migrations/001_initial_schema.sql up
 ```
 
-If the direction is not specified, "up" is assumed by default.
+## Schema Overview
 
-## Migration Naming Convention
+The schema includes:
 
-Migration files should follow this naming convention:
-- `NNN_description.sql`: For "up" migrations
-- `NNN_description_down.sql`: For corresponding "down" migrations
+1. `users` table:
+   - Stores user information
+   - Uses UUID-like user_id as primary key
+   - Includes username, email, and name fields
 
-Where NNN is a sequential number (001, 002, etc.) and description is a brief description of what the migration does.
+2. `workout_history` table:
+   - Stores workout records
+   - Links to users via user_id
+   - Includes exercise details, metrics, and timestamps
 
-## Best Practices
+Both tables include:
+- `created_at` and `updated_at` timestamps
+- Automatic timestamp updates via triggers
+- Appropriate indexes for common queries
 
-1. Always make migrations idempotent by using `IF NOT EXISTS` and `IF EXISTS` clauses.
-2. Include both "up" and "down" migrations when possible.
-3. Test migrations in a development environment before applying to production.
-4. Back up your database before applying migrations in production.
-5. Document any manual steps required alongside migrations.
-6. Drop objects in the reverse order of their creation in down migrations. 
+## Notes
+
+- This is a simplified migration structure that drops and recreates tables
+- No data retention is guaranteed when running migrations
+- For development purposes only 

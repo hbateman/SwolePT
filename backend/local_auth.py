@@ -3,26 +3,30 @@ import os
 import datetime
 from functools import wraps
 from flask import request, jsonify
-from local_db import init_db, create_user, get_user, verify_password
+from local_db import create_user, get_user, verify_password, get_db_connection
+import uuid
+from psycopg2.extras import RealDictCursor
 
-# Initialize the database
-init_db()
+# Get JWT secret from environment variables
+JWT_SECRET = os.getenv('JWT_SECRET')
+if not JWT_SECRET:
+    raise ValueError("JWT_SECRET environment variable is not set")
 
 def generate_token(user_id, email):
-    """Generate a JWT token for local development."""
-    secret = os.getenv('JWT_SECRET', 'local-development-secret')
+    """Generate a JWT token for local development.
+    Uses 'sub' claim to match JWT standard and production environment (AWS Cognito).
+    """
     payload = {
-        'sub': user_id,
+        'sub': user_id,  # Using 'sub' to match JWT standard and production
         'email': email,
         'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
     }
-    return jwt.encode(payload, secret, algorithm='HS256')
+    return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
 
 def verify_token(token):
     """Verify a JWT token for local development."""
     try:
-        secret = os.getenv('JWT_SECRET', 'local-development-secret')
-        payload = jwt.decode(token, secret, algorithms=['HS256'])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
         return payload
     except jwt.ExpiredSignatureError:
         return None
@@ -51,32 +55,76 @@ def require_auth(f):
     
     return decorated
 
-def register_user(email, password):
+def register_user(email, password, given_name=None, family_name=None):
     """Register a new user locally."""
-    user_id, error = create_user(email, password)
-    if error:
-        return {'error': error}, 400
-    
-    token = generate_token(user_id, email)
-    return {
-        'token': token,
-        'user': {
-            'id': user_id,
-            'email': email
-        }
-    }, 200
+    try:
+        # Generate a UUID-like user_id to match Cognito's format
+        user_id = str(uuid.uuid4())
+        username = email  # Use email as username, matching Cognito's default behavior
+        
+        # Create user in database
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Insert new user
+        cursor.execute("""
+            INSERT INTO users (user_id, username, email, given_name, family_name)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING user_id
+        """, (user_id, username, email, given_name or email.split('@')[0], family_name or ''))
+        
+        result = cursor.fetchone()
+        conn.commit()
+        
+        # Generate token
+        token = generate_token(result['user_id'], email)
+        
+        return {
+            'token': token,
+            'user': {
+                'user_id': result['user_id'],
+                'email': email,
+                'username': username,
+                'given_name': given_name,
+                'family_name': family_name
+            }
+        }, 200
+        
+    except Exception as e:
+        return {'error': str(e)}, 400
+    finally:
+        if conn:
+            conn.close()
 
 def login_user(email, password):
     """Login a user locally."""
-    user = get_user(email)
-    if not user or not verify_password(user, password):
-        return {'error': 'Invalid credentials'}, 401
-    
-    token = generate_token(user['id'], email)
-    return {
-        'token': token,
-        'user': {
-            'id': user['id'],
-            'email': email
-        }
-    }, 200 
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get user
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+        
+        if not user:
+            return {'error': 'Invalid credentials'}, 401
+        
+        # Generate token
+        token = generate_token(user['user_id'], email)
+        
+        return {
+            'token': token,
+            'user': {
+                'user_id': user['user_id'],
+                'email': user['email'],
+                'username': user['username'],
+                'given_name': user['given_name'],
+                'family_name': user['family_name']
+            }
+        }, 200
+        
+    except Exception as e:
+        return {'error': str(e)}, 400
+    finally:
+        if conn:
+            conn.close() 

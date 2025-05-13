@@ -4,9 +4,17 @@ import os
 from dotenv import load_dotenv
 import boto3
 from local_auth import register_user, login_user, require_auth
+from local_db import process_workout_csv, verify_db_ready
+import jwt
+from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
+
+# Get JWT secret from environment variables
+JWT_SECRET = os.getenv('JWT_SECRET')
+if not JWT_SECRET:
+    raise ValueError("JWT_SECRET environment variable is not set")
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, resources={
@@ -18,6 +26,9 @@ CORS(app, supports_credentials=True, resources={
         "supports_credentials": True
     }
 })
+
+# Verify database is ready before starting
+verify_db_ready()
 
 # Configure LocalStack S3 client
 s3 = boto3.client(
@@ -51,26 +62,41 @@ def login():
     return login_user(email, password)
 
 @app.route('/upload', methods=['POST'])
-@require_auth
 def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
     try:
-        # Upload to LocalStack S3
-        bucket_name = os.getenv('UPLOAD_BUCKET_NAME')
-        file_key = f"{request.user['sub']}/{file.filename}"
+        # Get the authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'No authorization header'}), 401
+
+        # Extract and verify the token
+        token = auth_header.split(' ')[1]
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+            user_id = payload['sub']  # Using 'sub' to match JWT standard and production
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        # Check if file was uploaded
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
         
-        s3.upload_fileobj(file, bucket_name, file_key)
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+
+        # Read the CSV content
+        csv_content = file.read().decode('utf-8')
+        
+        # Process the CSV and store in database
+        processed_records = process_workout_csv(user_id, csv_content)
         
         return jsonify({
-            'message': 'File uploaded successfully',
-            'url': f"{os.getenv('AWS_ENDPOINT_URL')}/{bucket_name}/{file_key}"
+            'message': 'File processed successfully',
+            'records_processed': len(processed_records),
+            'records': processed_records
         })
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

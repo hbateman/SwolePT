@@ -38,14 +38,27 @@ def get_db_connection(database_name=None):
         # Use the specified database name or default to environment variable
         db_name = database_name or os.getenv('RDS_DATABASE_NAME')
         
-        conn = psycopg2.connect(
-            host=os.getenv('DATABASE_HOST'),
-            port=os.getenv('DATABASE_PORT'),
-            user=os.getenv('RDS_DATABASE_USER'),
-            password=os.getenv('RDS_DATABASE_PASSWORD'),
-            database=db_name if database_name else 'postgres',
-            sslmode='disable'  # Disable SSL for local development
-        )
+        # For local development, use the current system user
+        if os.getenv('LOCAL_DEVELOPMENT', 'true').lower() == 'true':
+            conn = psycopg2.connect(
+                host=os.getenv('DATABASE_HOST', 'localhost'),
+                port=os.getenv('DATABASE_PORT', '5432'),
+                user=os.getenv('USER'),  # Use current system user
+                password='',  # No password for local development
+                database=db_name if database_name else 'postgres',
+                sslmode='disable'  # Disable SSL for local development
+            )
+        else:
+            # Production connection
+            conn = psycopg2.connect(
+                host=os.getenv('DATABASE_HOST'),
+                port=os.getenv('DATABASE_PORT'),
+                user=os.getenv('RDS_DATABASE_USER'),
+                password=os.getenv('RDS_DATABASE_PASSWORD'),
+                database=db_name if database_name else 'postgres',
+                sslmode='disable'
+            )
+        
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         return conn
     except Exception as e:
@@ -95,7 +108,22 @@ def apply_migration(migration_file, direction='up'):
         
         # Execute migration
         cur = conn.cursor()
-        cur.execute(sql)
+        
+        # Split SQL into statements and execute each one
+        statements = sql.split(';')
+        for statement in statements:
+            if statement.strip():  # Skip empty statements
+                try:
+                    cur.execute(statement)
+                except psycopg2.errors.DuplicateObject:
+                    # Skip if object already exists
+                    print(f"Note: Object already exists, skipping: {statement[:50]}...")
+                    continue
+                except Exception as e:
+                    print(f"Warning: Error executing statement: {str(e)}")
+                    print(f"Statement: {statement[:50]}...")
+                    continue
+        
         cur.close()
         conn.close()
         
