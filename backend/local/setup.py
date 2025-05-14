@@ -176,46 +176,51 @@ def check_database_tables():
 def setup_database():
     """Set up database tables and migrations."""
     try:
-        # Wait for PostgreSQL to be ready
-        if not wait_for_postgres():
-            print("❌ Failed to connect to PostgreSQL")
-            sys.exit(1)
-
-        # Check if tables already exist
-        if check_database_tables():
-            print("ℹ️ Database tables already exist")
-            return
-
-        # Initialize database tables
+        # Get database connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Create tables
         print("Creating database tables...")
-        Base.metadata.create_all(bind=engine)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id VARCHAR(255) PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                given_name VARCHAR(255),
+                family_name VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS workouts (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255) REFERENCES users(user_id),
+                date TIMESTAMP NOT NULL,
+                type VARCHAR(50) NOT NULL,
+                duration INTEGER,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        conn.commit()
         print("✅ Database tables created successfully")
-
-        # Check if migrations directory exists
-        migrations_dir = os.path.join(os.path.dirname(__file__), 'migrations')
-        if not os.path.exists(migrations_dir):
-            print("Creating migrations directory...")
-            os.makedirs(migrations_dir)
-
-        # Check if initial migration exists
-        versions_dir = os.path.join(migrations_dir, 'versions')
-        if not os.path.exists(versions_dir):
-            os.makedirs(versions_dir)
-            print("Creating initial migration...")
-            subprocess.run(['alembic', 'revision', '--autogenerate', '-m', 'Initial migration'], check=True)
-            print("✅ Initial migration created")
-
-        # Apply migrations
+        
+        # Apply migrations using the CLI tool
         print("Applying migrations...")
-        subprocess.run(['alembic', 'upgrade', 'head'], check=True)
+        from db.management.cli import run_migrations
+        run_migrations()
         print("✅ Migrations applied successfully")
-
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error running database commands: {str(e)}")
-        sys.exit(1)
+        
     except Exception as e:
         print(f"❌ Error setting up database: {str(e)}")
-        sys.exit(1)
+        raise
+    finally:
+        if conn:
+            conn.close()
 
 def wait_for_services():
     """Wait for LocalStack services to be ready."""

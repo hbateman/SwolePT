@@ -4,13 +4,23 @@ This directory contains the backend code for the SwolePT application, which is b
 
 ## Directory Structure
 
+```
+backend/
+├── db/                  # Database package
+│   ├── migrations/      # Database migrations
+│   ├── models/         # Database models
+│   └── management/     # Database management utilities
+├── local/              # Local development package
+└── tests/              # Test files
+```
+
 - `common/`: Common utilities and modules shared across Lambda functions
 - `functions/`: Lambda function handlers
   - `auth/`: Authentication-related functions (login, register, etc.)
   - `workouts/`: Workout management functions (create, list, update, delete)
   - `exercises/`: Exercise management functions
   - `users/`: User profile management functions
-- `migrations/`: Database migration scripts
+- `db/migrations/`: Database migration scripts
 - `tests/`: Test files for the backend
 
 ## Setup Instructions

@@ -151,12 +151,16 @@ npx cdk deploy
 
 ### Database Migrations
 
-To run database migrations:
-
+The database setup and migrations are handled automatically by the build script:
 ```bash
-cd backend/migrations
-./setup_local_db.sh  # For local development
-./run_migrations.sh  # For production
+./build.sh local setup
+```
+
+For manual database management, use the CLI tool:
+```bash
+cd backend
+python -m db.management.cli migrate  # Run migrations
+python -m db.management.cli init     # Initialize database
 ```
 
 ### Testing
