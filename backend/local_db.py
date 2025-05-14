@@ -1,232 +1,194 @@
-import os
 import psycopg2
-from psycopg2.extras import RealDictCursor, DictCursor
-from werkzeug.security import generate_password_hash, check_password_hash
+from psycopg2.extras import RealDictCursor
+import os
+from dotenv import load_dotenv
 import csv
 from io import StringIO
-from datetime import datetime
+import time
+import logging
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    filename='workout_upload.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 def get_db_connection():
-    """Get a connection to the local PostgreSQL database."""
-    try:
-        # Get database configuration from environment variables
-        db_host = os.getenv('DATABASE_HOST', 'localhost')
-        db_port = os.getenv('DATABASE_PORT', '5432')
-        db_name = os.getenv('DATABASE_NAME', os.getenv('RDS_DATABASE_NAME', 'swolept'))
-        db_user = os.getenv('DATABASE_USER', os.getenv('RDS_DATABASE_USER', 'hugo'))
-        db_password = os.getenv('DATABASE_PASSWORD', os.getenv('RDS_DATABASE_PASSWORD', ''))
-        
-        print("Attempting to connect to database with parameters:")
-        print(f"host={db_host}")
-        print(f"port={db_port}")
-        print(f"dbname={db_name}")
-        print(f"user={db_user}")
-        print(f"password={'*' * len(db_password) if db_password else ''}")
-        
-        conn = psycopg2.connect(
-            host=db_host,
-            port=db_port,
-            dbname=db_name,
-            user=db_user,
-            password=db_password,
-            connect_timeout=10
-        )
-        print("Successfully connected to database")
-        return conn
-    except psycopg2.OperationalError as e:
-        print(f"Database connection error: {str(e)}")
-        print(f"Error code: {e.pgcode}")
-        print(f"Error message: {e.pgerror}")
-        raise
-    except Exception as e:
-        print(f"Unexpected error connecting to database: {str(e)}")
-        raise
+    """Get a database connection."""
+    return psycopg2.connect(
+        host=os.getenv('DATABASE_HOST'),
+        port=os.getenv('DATABASE_PORT'),
+        user=os.getenv('RDS_DATABASE_USER'),
+        password=os.getenv('RDS_DATABASE_PASSWORD'),
+        database=os.getenv('RDS_DATABASE_NAME')
+    )
+
+def create_user(username, email, password):
+    """Create a new user."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO users (username, email, password) VALUES (%s, %s, %s) RETURNING id",
+        (username, email, password)
+    )
+    user_id = cur.fetchone()[0]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return user_id
+
+def get_user(username):
+    """Get a user by username."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+    return user
+
+def verify_password(username, password):
+    """Verify a user's password."""
+    user = get_user(username)
+    if user and user['password'] == password:  # In production, use proper password hashing
+        return True
+    return False
 
 def verify_db_ready():
-    """Verify that the database is ready for use."""
-    conn = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if required tables exist
-        cursor.execute("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name IN ('users', 'workout_history')
-            );
-        """)
-        
-        tables_exist = cursor.fetchone()[0]
-        if not tables_exist:
-            raise Exception("Required database tables do not exist. Please run migrations first.")
-        
-        return True
-    except Exception as e:
-        print(f"Database verification failed: {str(e)}")
-        raise
-    finally:
-        if conn:
+    """Verify that the database is ready to accept connections."""
+    max_attempts = 30
+    attempt = 1
+    
+    while attempt <= max_attempts:
+        try:
+            conn = get_db_connection()
             conn.close()
+            return True
+        except psycopg2.OperationalError:
+            print(f"Waiting for database to be ready (attempt {attempt}/{max_attempts})...")
+            time.sleep(2)
+            attempt += 1
+    
+    raise Exception("Database failed to become ready after maximum attempts")
 
-def init_db():
-    """Initialize the database with required tables."""
-    conn = None
+def process_workout_csv(user_id, csv_content):
+    """Process a CSV file containing workout data and store it in the database."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    processed_records = []
+    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Read and execute the initial schema
-        with open('migrations/001_initial_schema.sql', 'r') as f:
-            sql = f.read()
-            
-            # Split the SQL into individual statements
-            statements = sql.split(';')
-            
-            # Execute each statement separately
-            for statement in statements:
-                if statement.strip():  # Skip empty statements
-                    try:
-                        cursor.execute(statement)
-                    except psycopg2.errors.DuplicateObject:
-                        # Skip if object already exists
-                        continue
-                    except Exception as e:
-                        print(f"Warning: Error executing statement: {str(e)}")
-                        continue
-        
-        conn.commit()
-        print("Database initialized successfully!")
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        print(f"Error initializing database: {str(e)}")
-        raise
-    finally:
-        if conn:
-            conn.close()
-
-def create_user(email, password):
-    """Create a new user in the database."""
-    conn = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Check if user already exists
-        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
-        if cursor.fetchone():
-            return None, "User already exists"
-        
-        # Hash the password
-        password_hash = generate_password_hash(password)
-        
-        # Insert new user
-        cursor.execute(
-            "INSERT INTO users (email, password_hash) VALUES (%s, %s) RETURNING id",
-            (email, password_hash)
-        )
-        user_id = cursor.fetchone()['id']
-        
-        conn.commit()
-        return user_id, None
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        print(f"Error creating user: {str(e)}")
-        return None, str(e)
-    finally:
-        if conn:
-            conn.close()
-
-def get_user(email):
-    """Get a user from the database by email."""
-    conn = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
-        return cursor.fetchone()
-    except Exception as e:
-        print(f"Error getting user: {str(e)}")
-        return None
-    finally:
-        if conn:
-            conn.close()
-
-def verify_password(user, password):
-    """Verify a user's password."""
-    return check_password_hash(user['password_hash'], password)
-
-def process_workout_csv(user_id: str, csv_content: str) -> list:
-    """
-    Process a CSV file containing workout data and store it in the database.
-    Returns a list of processed workout records.
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        # Create a CSV reader from the string content
+        # Parse CSV content
         csv_file = StringIO(csv_content)
         reader = csv.DictReader(csv_file)
         
-        # Prepare the insert statement
-        insert_stmt = """
-            INSERT INTO workout_history (
-                user_id, date, exercise, category, weight, weight_unit,
-                reps, distance, distance_unit, time, comment
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-            ) RETURNING id
-        """
+        # Create case-insensitive mapping of column names
+        column_mapping = {col.lower(): col for col in reader.fieldnames}
+        logging.info(f"CSV Headers: {reader.fieldnames}")
+        logging.info(f"Column mapping: {column_mapping}")
         
-        processed_records = []
-        with conn.cursor() as cur:
-            for row in reader:
-                # Convert empty strings to None
-                weight = float(row['Weight']) if row['Weight'] else None
-                reps = int(row['Reps']) if row['Reps'] else None
-                distance = float(row['Distance']) if row['Distance'] else None
+        # Validate required columns
+        required_columns = ['date', 'exercise', 'category']
+        row_number = 1  # Start counting from 1 for human-readable line numbers
+        
+        for row in reader:
+            has_error = False
+            error_details = []
+            
+            # Check for required fields using case-insensitive mapping
+            missing_fields = []
+            for req_col in required_columns:
+                if req_col not in column_mapping or not row.get(column_mapping[req_col]):
+                    missing_fields.append(req_col)
+            
+            if missing_fields:
+                has_error = True
+                error_details.append(f"Missing required fields: {', '.join(missing_fields)}")
+            
+            # Convert date string to proper format if needed
+            try:
+                date = row.get(column_mapping.get('date', 'date'))
+                if not isinstance(date, str):
+                    has_error = True
+                    error_details.append(f"Date must be a string, got {type(date)}")
+            except Exception as e:
+                has_error = True
+                error_details.append(f"Invalid date format: {str(e)}")
+            
+            if has_error:
+                error_msg = f"\nError in row {row_number}:\nRow data: {row}\nIssues: {'; '.join(error_details)}"
+                logging.error(error_msg)
+                print(error_msg)  # Also print to console
+                raise ValueError(f"Row {row_number}: {'; '.join(error_details)}")
+            
+            try:
+                # Helper function to convert empty strings to None for numeric fields
+                def get_numeric_value(value):
+                    if value == '':
+                        return None
+                    try:
+                        return float(value) if '.' in str(value) else int(value)
+                    except (ValueError, TypeError):
+                        return None
+
+                # Get values with proper type conversion
+                weight = get_numeric_value(row.get(column_mapping.get('weight', 'weight')))
+                reps = get_numeric_value(row.get(column_mapping.get('reps', 'reps')))
+                distance = get_numeric_value(row.get(column_mapping.get('distance', 'distance')))
                 
-                # Insert the record
-                cur.execute(insert_stmt, (
+                # Insert workout record using case-insensitive mapping
+                cur.execute("""
+                    INSERT INTO workout_history (
+                        user_id, date, exercise, category,
+                        weight, weight_unit, reps,
+                        distance, distance_unit, time, comment
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
                     user_id,
-                    datetime.strptime(row['Date'], '%Y-%m-%d').date(),
-                    row['Exercise'],
-                    row['Category'],
-                    weight,
-                    row['Weight Unit'] or None,
-                    reps,
-                    distance,
-                    row['Distance Unit'] or None,
-                    row['Time'] or None,
-                    row['Comment'] or None
+                    row.get(column_mapping.get('date', 'date')),  # Required
+                    row.get(column_mapping.get('exercise', 'exercise')),  # Required
+                    row.get(column_mapping.get('category', 'category')),  # Required
+                    weight,  # Converted to float or None
+                    row.get(column_mapping.get('weight unit', 'weight_unit')),
+                    reps,  # Converted to int or None
+                    distance,  # Converted to float or None
+                    row.get(column_mapping.get('distance unit', 'distance_unit')),
+                    row.get(column_mapping.get('time', 'time')),
+                    row.get(column_mapping.get('comment', 'comment'))
                 ))
                 
-                workout_id = cur.fetchone()[0]
+                record_id = cur.fetchone()[0]
                 processed_records.append({
-                    'id': workout_id,
-                    'date': row['Date'],
-                    'exercise': row['Exercise'],
-                    'category': row['Category'],
-                    'weight': weight,
-                    'weight_unit': row['Weight Unit'],
-                    'reps': reps,
-                    'distance': distance,
-                    'distance_unit': row['Distance Unit'],
-                    'time': row['Time'],
-                    'comment': row['Comment']
+                    'id': record_id,
+                    'date': row.get(column_mapping.get('date', 'date')),
+                    'exercise': row.get(column_mapping.get('exercise', 'exercise')),
+                    'category': row.get(column_mapping.get('category', 'category'))
                 })
+                
+            except Exception as e:
+                error_msg = f"\nDatabase error in row {row_number}:\nRow data: {row}\nError: {str(e)}"
+                logging.error(error_msg)
+                print(error_msg)  # Also print to console
+                raise ValueError(f"Row {row_number}: Database error: {str(e)}")
+            
+            row_number += 1
         
         conn.commit()
+        success_msg = f"Successfully processed {len(processed_records)} records"
+        logging.info(success_msg)
         return processed_records
         
     except Exception as e:
-        if conn:
-            conn.rollback()
-        raise Exception(f"Error processing workout CSV: {str(e)}")
+        conn.rollback()
+        error_msg = f"Error processing CSV: {str(e)}"
+        logging.error(error_msg)
+        print(error_msg)  # Also print to console
+        raise ValueError(error_msg)
     finally:
-        if conn:
-            conn.close() 
+        cur.close()
+        conn.close() 

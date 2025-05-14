@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Amplify } from 'aws-amplify';
 import awsconfig from './aws-exports';
@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import WorkoutHistory from './pages/WorkoutHistory';
+import GetSwole from './pages/GetSwole';
 import PrivateRoute from './components/PrivateRoute';
 import PublicRoute from './components/PublicRoute';
 import { isAuthenticated } from './services/auth';
@@ -15,9 +16,35 @@ import './App.css';
 // Configure Amplify with the unified configuration
 Amplify.configure(awsconfig);
 
+// Create Auth Context
+export const AuthContext = createContext<{
+  authenticated: boolean;
+  setAuthenticated: (value: boolean) => void;
+}>({
+  authenticated: false,
+  setAuthenticated: () => {},
+});
+
+// Create Auth Provider component
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [authenticated, setAuthenticated] = useState(isAuthenticated());
+
+  useEffect(() => {
+    // Check authentication status when the app loads
+    setAuthenticated(isAuthenticated());
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ authenticated, setAuthenticated }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
 function App() {
-  // Check if user is authenticated using our service
-  const authenticated = isAuthenticated();
+  const { authenticated, setAuthenticated } = useContext(AuthContext);
+
+  // Log authentication status for debugging
   console.log('App component - Authentication status:', authenticated);
   console.log('Environment:', process.env.REACT_APP_ENVIRONMENT);
   console.log('API URL:', process.env.REACT_APP_API_URL);
@@ -33,7 +60,7 @@ function App() {
               path="/login" 
               element={
                 <PublicRoute isAuthenticated={authenticated}>
-                  <Login />
+                  <Login onLogin={() => setAuthenticated(true)} />
                 </PublicRoute>
               } 
             />
@@ -41,7 +68,7 @@ function App() {
               path="/register" 
               element={
                 <PublicRoute isAuthenticated={authenticated}>
-                  <Register />
+                  <Register onRegister={() => setAuthenticated(true)} />
                 </PublicRoute>
               } 
             />
@@ -61,6 +88,14 @@ function App() {
                 </PrivateRoute>
               } 
             />
+            <Route 
+              path="/get-swole" 
+              element={
+                <PrivateRoute isAuthenticated={authenticated}>
+                  <GetSwole />
+                </PrivateRoute>
+              } 
+            />
             <Route path="/" element={<Navigate to={authenticated ? "/dashboard" : "/login"} replace />} />
           </Routes>
         </main>
@@ -69,4 +104,11 @@ function App() {
   );
 }
 
-export default App; 
+// Wrap the App with AuthProvider
+export default function AppWithAuth() {
+  return (
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  );
+} 

@@ -6,6 +6,7 @@ from flask import request, jsonify
 from local_db import create_user, get_user, verify_password, get_db_connection
 import uuid
 from psycopg2.extras import RealDictCursor
+from werkzeug.security import generate_password_hash
 
 # Get JWT secret from environment variables
 JWT_SECRET = os.getenv('JWT_SECRET')
@@ -62,16 +63,19 @@ def register_user(email, password, given_name=None, family_name=None):
         user_id = str(uuid.uuid4())
         username = email  # Use email as username, matching Cognito's default behavior
         
+        # Hash the password
+        password_hash = generate_password_hash(password)
+        
         # Create user in database
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Insert new user
         cursor.execute("""
-            INSERT INTO users (user_id, username, email, given_name, family_name)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO users (user_id, username, email, password_hash, given_name, family_name)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING user_id
-        """, (user_id, username, email, given_name or email.split('@')[0], family_name or ''))
+        """, (user_id, username, email, password_hash, given_name or email.split('@')[0], family_name or ''))
         
         result = cursor.fetchone()
         conn.commit()
@@ -107,6 +111,10 @@ def login_user(email, password):
         user = cursor.fetchone()
         
         if not user:
+            return {'error': 'Invalid credentials'}, 401
+        
+        # Verify password
+        if not verify_password(password, user['password_hash']):
             return {'error': 'Invalid credentials'}, 401
         
         # Generate token

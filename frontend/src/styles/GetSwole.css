@@ -1,0 +1,29 @@
+.get-swole-container {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+
+.get-swole-container h1 {
+  color: #333;
+  margin-bottom: 2rem;
+}
+
+.error-message {
+  padding: 1rem;
+  background-color: #ffebee;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.analysis-result {
+  padding: 2rem;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 800px;
+  white-space: pre-wrap;
+} 

@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Container, Typography, TextField, Button, Link, Alert } from '@mui/material';
 import { login, setToken } from '../services/auth';
 
-const Login: React.FC = () => {
+interface LoginProps {
+  onLogin: () => void;
+}
+
+const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,6 +22,7 @@ const Login: React.FC = () => {
     try {
       const response = await login(email, password);
       setToken(response.token);
+      onLogin();
       navigate('/dashboard');
       console.log('Navigation to dashboard triggered');
     } catch (err) {

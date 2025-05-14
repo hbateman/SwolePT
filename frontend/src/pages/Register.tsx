@@ -3,46 +3,32 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Container, Typography, TextField, Button, Link, Alert } from '@mui/material';
 import { register, setToken } from '../services/auth';
 
-const Register: React.FC = () => {
+interface RegisterProps {
+  onRegister: () => void;
+}
+
+const Register: React.FC<RegisterProps> = ({ onRegister }) => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    confirmPassword: '',
-    givenName: '',
-    familyName: '',
-  });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    // Validate passwords match
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const response = await register(
-        formData.email,
-        formData.password,
-        `${formData.givenName} ${formData.familyName}`
-      );
-      setToken(response.token);
-      navigate('/dashboard');
+      const response = await register(email, password, name);
+      if (response.token) {
+        setToken(response.token);
+        onRegister();
+        navigate('/dashboard');
+      } else if (response.requiresConfirmation) {
+        navigate('/confirm-registration', { state: { email } });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to register');
     } finally {
@@ -78,30 +64,19 @@ const Register: React.FC = () => {
             name="email"
             autoComplete="email"
             autoFocus
-            value={formData.email}
-            onChange={handleChange}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
           <TextField
             margin="normal"
             required
             fullWidth
-            id="givenName"
-            label="First Name"
-            name="givenName"
-            autoComplete="given-name"
-            value={formData.givenName}
-            onChange={handleChange}
-          />
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            id="familyName"
-            label="Last Name"
-            name="familyName"
-            autoComplete="family-name"
-            value={formData.familyName}
-            onChange={handleChange}
+            id="name"
+            label="Name"
+            name="name"
+            autoComplete="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
           />
           <TextField
             margin="normal"
@@ -112,20 +87,8 @@ const Register: React.FC = () => {
             type="password"
             id="password"
             autoComplete="new-password"
-            value={formData.password}
-            onChange={handleChange}
-          />
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            name="confirmPassword"
-            label="Confirm Password"
-            type="password"
-            id="confirmPassword"
-            autoComplete="new-password"
-            value={formData.confirmPassword}
-            onChange={handleChange}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
           />
           <Button
             type="submit"

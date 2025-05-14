@@ -78,6 +78,10 @@ function switch_environment {
             echo "Setting up local development environment..."
             if [ -f .env.local ]; then
                 cp .env.local .env
+                # Export all variables from .env.local
+                set -a
+                source .env.local
+                set +a
                 export LOCAL_DEVELOPMENT=true
                 echo "✅ Switched to local development environment"
             else
@@ -89,6 +93,10 @@ function switch_environment {
             echo "Setting up production environment..."
             if [ -f .env.prod ]; then
                 cp .env.prod .env
+                # Export all variables from .env.prod
+                set -a
+                source .env.prod
+                set +a
                 export LOCAL_DEVELOPMENT=false
                 echo "✅ Switched to production environment"
             else
@@ -152,11 +160,12 @@ case $COMMAND in
             echo "Waiting for services to be ready..."
             sleep 10
             
-            # Run database migrations
-            echo "Running database migrations..."
+            # Run database setup and migrations
+            echo "Setting up database and running migrations..."
             cd backend
             export RDS_DATABASE_NAME=swolept
-            python migrations/apply_migration.py migrations/001_initial_schema.sql up
+            python local_setup.py
+            # Copy local_db.py to backend directory
             cd ..
             
             echo "✅ Setup completed! You can now run './build.sh local start' to start the application."

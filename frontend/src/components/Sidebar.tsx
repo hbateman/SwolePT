@@ -1,14 +1,18 @@
-import React, { useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useRef, useContext } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Snackbar, Alert } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import HistoryIcon from '@mui/icons-material/History';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
-import { getToken } from '../services/auth';
+import LogoutIcon from '@mui/icons-material/Logout';
+import FitnessCenterIcon from '@mui/icons-material/FitnessCenter';
+import { getToken, clearToken } from '../services/auth';
+import { AuthContext } from '../App';
 import '../styles/Sidebar.css';
 
 const Sidebar: React.FC = () => {
+  const navigate = useNavigate();
+  const { setAuthenticated } = useContext(AuthContext);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [notification, setNotification] = useState<{
@@ -96,6 +100,10 @@ const Sidebar: React.FC = () => {
             <DashboardIcon />
             <span>Dashboard</span>
           </Link>
+          <Link to="/get-swole" className="nav-item">
+            <FitnessCenterIcon />
+            <span>Get Swole</span>
+          </Link>
           <div className="nav-item" onClick={() => fileInputRef.current?.click()}>
             <input
               type="file"
@@ -114,10 +122,18 @@ const Sidebar: React.FC = () => {
         </div>
       </nav>
       <div className="sidebar-footer">
-        <Link to="/account" className="nav-item">
-          <AccountCircleIcon />
-          <span>Account</span>
-        </Link>
+        <div 
+          className="nav-item" 
+          onClick={() => {
+            clearToken();
+            setAuthenticated(false);
+            navigate('/login');
+          }}
+          style={{ cursor: 'pointer' }}
+        >
+          <LogoutIcon />
+          <span>Logout</span>
+        </div>
       </div>
 
       <Snackbar
