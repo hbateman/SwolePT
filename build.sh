@@ -48,22 +48,16 @@ function check_service_health {
 # Function to stop any running application processes
 function stop_running_app {
     echo "Stopping any running application processes..."
-    if [ -f .backend.pid ]; then
-        kill $(cat .backend.pid) 2>/dev/null || true
-        rm .backend.pid
-    fi
-    if [ -f .frontend.pid ]; then
-        kill $(cat .frontend.pid) 2>/dev/null || true
-        rm .frontend.pid
-    fi
+    # Find and kill any running backend processes
+    pkill -f "python -m local.server" || true
+    # Find and kill any running frontend processes
+    pkill -f "react-scripts start" || true
 }
 
 # Check if environment is specified
 if [ -z "$1" ]; then
     echo "❌ Error: Environment not specified"
-    echo "Usage: ./build.sh <environment> <command>"
-    echo "Environments: local, dev, prod"
-    echo "Commands: setup, start, stop, test"
+    show_usage
     exit 1
 fi
 
@@ -163,9 +157,8 @@ case $COMMAND in
             # Run database setup and migrations
             echo "Setting up database and running migrations..."
             cd backend
-            export RDS_DATABASE_NAME=swolept
-            python local_setup.py
-            # Copy local_db.py to backend directory
+            python -m db.management.cli init
+            python -m db.management.cli migrate
             cd ..
             
             echo "✅ Setup completed! You can now run './build.sh local start' to start the application."
@@ -193,29 +186,19 @@ case $COMMAND in
             # Start backend server
             echo "Starting backend server..."
             cd backend
-            python local_server.py > backend.log 2>&1 &
-            BACKEND_PID=$!
+            if ! python -m local.server > local/logs/backend.log 2>&1 & then
+                echo "❌ Error: Failed to start backend server"
+                exit 1
+            fi
             cd ..
             
             # Start frontend
-            echo "Starting frontend server..."
+            echo "Starting frontend..."
             cd frontend
-            npm start > frontend.log 2>&1 &
-            FRONTEND_PID=$!
+            npm start > ../backend/local/logs/frontend.log 2>&1 &
             cd ..
             
-            # Save PIDs to file for later cleanup
-            echo $BACKEND_PID > .backend.pid
-            echo $FRONTEND_PID > .frontend.pid
-            
-            echo "✅ Application started!"
-            echo "Backend running on http://localhost:8000"
-            echo "Frontend running on http://localhost:3000"
-            echo "Logs are available in backend.log and frontend.log"
-            
-            # Keep script running and handle cleanup on exit
-            trap 'kill $(cat .backend.pid) $(cat .frontend.pid) 2>/dev/null; rm -f .backend.pid .frontend.pid' EXIT
-            wait
+            echo "✅ Application started! Backend running on http://localhost:8000 and frontend on http://localhost:3000"
         else
             echo "❌ Error: Start command is only available for local environment"
             exit 1
@@ -224,14 +207,8 @@ case $COMMAND in
     "stop")
         echo "Stopping the application..."
         if [ "$ENV" = "local" ]; then
-            # Stop any running application processes
             stop_running_app
-            
-            # Stop Docker services
-            echo "Stopping Docker services..."
-            docker-compose down
-            
-            echo "✅ Application stopped!"
+            echo "✅ Application stopped"
         else
             echo "❌ Error: Stop command is only available for local environment"
             exit 1
@@ -287,10 +264,8 @@ case $COMMAND in
         fi
         ;;
     *)
-        echo "❌ Error: Unknown command '$COMMAND'"
-        echo "Usage: ./build.sh <environment> <command>"
-        echo "Environments: local, dev, prod"
-        echo "Commands: setup, start, stop, test"
+        echo "❌ Error: Invalid command '$COMMAND'"
+        show_usage
         exit 1
         ;;
 esac

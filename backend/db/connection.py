@@ -1,3 +1,7 @@
+"""
+Database connection management for SwolePT backend.
+This module handles database connection setup, session management, and initialization.
+"""
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base

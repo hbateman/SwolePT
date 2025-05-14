@@ -4,8 +4,8 @@ import os
 from dotenv import load_dotenv
 import boto3
 import openai
-from local_auth import register_user, login_user, require_auth
-from local_db import process_workout_csv, verify_db_ready, get_db_connection
+from .auth import register_user, login_user, require_auth
+from .db import process_workout_csv, verify_db_ready, get_db_connection
 import jwt
 from datetime import datetime, timedelta
 from psycopg2.extras import RealDictCursor

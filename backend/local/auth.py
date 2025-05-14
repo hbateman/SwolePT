@@ -3,7 +3,7 @@ import os
 import datetime
 from functools import wraps
 from flask import request, jsonify
-from local_db import create_user, get_user, verify_password, get_db_connection
+from .db import create_user, get_user, verify_password, get_db_connection
 import uuid
 from psycopg2.extras import RealDictCursor
 from werkzeug.security import generate_password_hash
