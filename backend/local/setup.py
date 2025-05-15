@@ -6,10 +6,10 @@ import sys
 import subprocess
 import psycopg2
 from botocore.config import Config
-from dotenv import load_dotenv
 from sqlalchemy import inspect
-from database import engine, Base
-from models import User, WorkoutHistory
+from db import engine, Base
+from db.models import User, WorkoutHistory
+from common.env import load_environment
 
 def check_docker_container(container_name):
     """Check if a Docker container is running and healthy."""
@@ -107,23 +107,15 @@ def wait_for_postgres():
 
 def load_environment():
     """Load environment variables from .env file."""
-    # Get the project root directory (two levels up from this script)
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    env_path = os.path.join(project_root, '.env')
-    
-    if not os.path.exists(env_path):
-        print(f"❌ Error: .env file not found at {env_path}")
-        sys.exit(1)
-    
-    load_dotenv(env_path)
+    load_environment()  # Use centralized environment loading
     
     # Validate required environment variables
     required_vars = [
         'DATABASE_HOST', 'DATABASE_PORT', 'RDS_DATABASE_NAME',
-        'RDS_DATABASE_USER', 'RDS_DATABASE_PASSWORD',  # Required for Docker setup
+        'RDS_DATABASE_USER', 'RDS_DATABASE_PASSWORD',
         'AWS_ENDPOINT_URL', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY',
         'AWS_REGION', 'UPLOAD_BUCKET_NAME', 'API_GATEWAY_NAME', 'API_STAGE_NAME',
-        'LAMBDA_TIMEOUT', 'LAMBDA_MEMORY', 'OPENAI_API_KEY'  # Added OpenAI API key
+        'LAMBDA_TIMEOUT', 'LAMBDA_MEMORY', 'OPENAI_API_KEY'
     ]
     
     missing_vars = [var for var in required_vars if not os.getenv(var)]

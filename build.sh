@@ -54,6 +54,9 @@ function stop_running_app {
     pkill -f "react-scripts start" || true
 }
 
+# Set workspace root
+export WORKSPACE_ROOT="$(pwd)"
+
 # Check if environment is specified
 if [ -z "$1" ]; then
     echo "❌ Error: Environment not specified"

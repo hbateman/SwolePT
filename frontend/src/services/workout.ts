@@ -33,5 +33,5 @@ export const fetchWorkoutHistory = async (): Promise<WorkoutRecord[]> => {
     throw new Error(error.error || 'Failed to fetch workout history');
   }
 
-  return response.json();
+  return await response.json();
 }; 
