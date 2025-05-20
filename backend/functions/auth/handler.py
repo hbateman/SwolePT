@@ -7,10 +7,19 @@ import os
 
 # Add the parent directory to the path to import common utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from common.utils import create_response, get_db_connection, execute_query
+from common.utils import create_response
+from ..db.providers import get_provider
 
 # Initialize Cognito client
 cognito = boto3.client('cognito-idp')
+
+# Initialize database provider
+_db_provider = get_provider()
+
+def get_db_provider():
+    """Get the database provider instance."""
+    global _db_provider
+    return _db_provider
 
 def main(event, context):
     """
@@ -106,20 +115,16 @@ def handle_register(body):
             ]
         )
         
-        # Create user record in database
+        # Create user record in database using the provider
         try:
-            query = """
-            INSERT INTO users (user_id, username, email, given_name, family_name)
-            VALUES (%s, %s, %s, %s, %s)
-            """
-            params = (
-                response['UserSub'],
-                username,
-                email,
-                given_name,
-                family_name
+            db = get_db_provider()
+            db.create_user(
+                username=username,
+                email=email,
+                password_hash='',  # No password hash needed as we use Cognito
+                given_name=given_name,
+                family_name=family_name
             )
-            execute_query(query, params, fetch=False)
         except Exception as db_error:
             print(f"Error creating user in database: {str(db_error)}")
             # Continue even if database insert fails, as the user is still created in Cognito
@@ -129,11 +134,8 @@ def handle_register(body):
             'userSub': response['UserSub'],
             'userConfirmed': response['UserConfirmed']
         })
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'UsernameExistsException':
-            return create_response(400, {'error': 'Username already exists'})
-        else:
-            return create_response(500, {'error': str(e)})
+    except Exception as e:
+        return create_response(500, {'error': str(e)})
 
 def handle_confirm(body):
     """

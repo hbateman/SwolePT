@@ -1,8 +1,6 @@
 import json
 import os
 import boto3
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from botocore.exceptions import ClientError
 
 # Try to load environment variables from .env file if it exists
@@ -26,62 +24,6 @@ def get_env_var(name, default=None):
     if value is None:
         print(f"Warning: Environment variable {name} is not set")
     return value
-
-def get_db_connection():
-    """
-    Get a connection to the RDS database
-    """
-    try:
-        # Get database connection details from environment variables
-        host = get_env_var('DATABASE_HOST')
-        port = get_env_var('DATABASE_PORT')
-        database = get_env_var('DATABASE_NAME')
-        user = get_env_var('DATABASE_USER')
-        password = get_env_var('DATABASE_PASSWORD')
-        
-        # Create connection
-        conn = psycopg2.connect(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password
-        )
-        
-        return conn
-    except Exception as e:
-        print(f"Error connecting to database: {str(e)}")
-        raise
-
-def execute_query(query, params=None, fetch=True):
-    """
-    Execute a database query and return results
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
-        
-        if fetch:
-            result = cursor.fetchall()
-        else:
-            conn.commit()
-            result = cursor.rowcount
-        
-        return result
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        print(f"Error executing query: {str(e)}")
-        raise
-    finally:
-        if conn:
-            conn.close()
 
 def verify_token(token):
     """

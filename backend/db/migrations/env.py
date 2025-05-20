@@ -5,18 +5,40 @@ from alembic import context
 import os
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Add the backend directory to sys.path to allow importing our modules
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.append(str(backend_dir))
 
+# Load environment variables from .env file in project root
+env_path = backend_dir.parent / '.env'
+print(f"Loading .env from: {env_path}")
+load_dotenv(env_path)
+
+# Debug: Print environment variables
+print("Environment variables:")
+print(f"DATABASE_USER: {os.getenv('DATABASE_USER')}")
+print(f"DATABASE_PASSWORD: {os.getenv('DATABASE_PASSWORD')}")
+print(f"DATABASE_HOST: {os.getenv('DATABASE_HOST')}")
+print(f"DATABASE_PORT: {os.getenv('DATABASE_PORT')}")
+print(f"DATABASE_NAME: {os.getenv('DATABASE_NAME')}")
+
 # Import our database models and configuration
-from db.connection import Base, DATABASE_URL
-from db.models import User, WorkoutHistory
+from db.models import Base
+from db.providers import get_provider
+
+# Get database URL from provider
+provider = get_provider()
+DATABASE_URL = provider.get_connection_url()
+print(f"Database URL: {DATABASE_URL}")
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# Override sqlalchemy.url with our provider's URL
+config.set_main_option('sqlalchemy.url', DATABASE_URL)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

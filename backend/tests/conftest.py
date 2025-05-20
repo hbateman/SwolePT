@@ -3,6 +3,7 @@ import sys
 import pytest
 import json
 from unittest.mock import MagicMock, patch
+from ..db.providers import get_provider
 
 # Add the parent directory to the path to import common utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -74,12 +75,11 @@ def mock_cognito():
         
         yield client
 
-# Mock database connection for testing
+# Mock database provider for testing
 @pytest.fixture
-def mock_db_connection():
-    with patch('common.utils.get_db_connection') as mock:
-        connection = MagicMock()
-        cursor = MagicMock()
-        connection.cursor.return_value = cursor
-        mock.return_value = connection
-        yield connection 
+def mock_db():
+    """Mock database provider for testing."""
+    with patch('providers.get_provider') as mock:
+        mock_provider = MagicMock()
+        mock.return_value = mock_provider
+        yield mock_provider 

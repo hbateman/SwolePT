@@ -105,7 +105,7 @@ export const isAuthenticated = () => {
 
 // Helper function to get the authentication token
 export const getToken = () => {
-  return awaitlocalStorage.getItem('token');
+  return localStorage.getItem('token');
 };
 
 // Helper function to set the authentication token

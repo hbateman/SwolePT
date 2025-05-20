@@ -1,12 +1,18 @@
-import jwt
 import os
-import datetime
+import jwt
+from datetime import datetime, timedelta
+from werkzeug.security import generate_password_hash, check_password_hash
+from db.providers import get_provider
 from functools import wraps
-from flask import request, jsonify
-from .db import create_user, get_user, verify_password, get_db_connection
-import uuid
-from psycopg2.extras import RealDictCursor
-from werkzeug.security import generate_password_hash
+from flask import request, jsonify, current_app
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Get JWT secret from environment variables
 JWT_SECRET = os.getenv('JWT_SECRET')
@@ -20,7 +26,7 @@ def generate_token(user_id, email):
     payload = {
         'sub': user_id,  # Using 'sub' to match JWT standard and production
         'email': email,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
+        'exp': datetime.utcnow() + timedelta(days=1)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
 
@@ -59,80 +65,85 @@ def require_auth(f):
 def register_user(email, password, given_name=None, family_name=None):
     """Register a new user locally."""
     try:
-        # Generate a UUID-like user_id to match Cognito's format
-        user_id = str(uuid.uuid4())
-        username = email  # Use email as username, matching Cognito's default behavior
+        if not email or not password:
+            logger.error("Missing required fields in register_user")
+            return {'error': 'Email and password are required'}, 400
+            
+        db = get_provider()
+        logger.info(f"Checking for existing user with email: {email}")
         
-        # Hash the password
-        password_hash = generate_password_hash(password)
+        # Check if user already exists
+        existing_user = db.get_user_by_email(email)
+        if existing_user:
+            logger.error(f"User already exists with email: {email}")
+            return {'error': 'User with this email already exists'}, 400
         
         # Create user in database
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Insert new user
-        cursor.execute("""
-            INSERT INTO users (user_id, username, email, password_hash, given_name, family_name)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING user_id
-        """, (user_id, username, email, password_hash, given_name or email.split('@')[0], family_name or ''))
-        
-        result = cursor.fetchone()
-        conn.commit()
+        try:
+            logger.info(f"Creating new user: email={email}, given_name={given_name}, family_name={family_name}")
+            user = db.create_user(
+                username=email,  # Use email as username, matching Cognito's default behavior
+                email=email,
+                password_hash=generate_password_hash(password),
+                given_name=given_name or email.split('@')[0],
+                family_name=family_name or ''
+            )
+            logger.info(f"User created successfully with ID: {user.user_id}")
+        except Exception as e:
+            logger.error(f"Failed to create user: {str(e)}")
+            return {'error': f'Failed to create user: {str(e)}'}, 400
         
         # Generate token
-        token = generate_token(result['user_id'], email)
+        try:
+            logger.info("Generating token for new user")
+            token = generate_token(user.user_id, email)
+            logger.info("Token generated successfully")
+        except Exception as e:
+            logger.error(f"Failed to generate token: {str(e)}")
+            return {'error': f'Failed to generate token: {str(e)}'}, 500
         
         return {
             'token': token,
             'user': {
-                'user_id': result['user_id'],
-                'email': email,
-                'username': username,
-                'given_name': given_name,
-                'family_name': family_name
+                'user_id': user.user_id,
+                'email': user.email,
+                'username': user.username,
+                'given_name': user.given_name,
+                'family_name': user.family_name
             }
         }, 200
         
     except Exception as e:
-        return {'error': str(e)}, 400
-    finally:
-        if conn:
-            conn.close()
+        logger.error(f"Registration failed with error: {str(e)}")
+        return {'error': f'Registration failed: {str(e)}'}, 400
 
 def login_user(email, password):
     """Login a user locally."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        db = get_provider()
         
         # Get user
-        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
-        user = cursor.fetchone()
-        
+        user = db.get_user_by_email(email)
         if not user:
             return {'error': 'Invalid credentials'}, 401
         
         # Verify password
-        if not verify_password(password, user['password_hash']):
+        if not db.verify_password(password, user.password_hash):
             return {'error': 'Invalid credentials'}, 401
         
         # Generate token
-        token = generate_token(user['user_id'], email)
+        token = generate_token(user.user_id, email)
         
         return {
             'token': token,
             'user': {
-                'user_id': user['user_id'],
-                'email': user['email'],
-                'username': user['username'],
-                'given_name': user['given_name'],
-                'family_name': user['family_name']
+                'user_id': user.user_id,
+                'email': user.email,
+                'username': user.username,
+                'given_name': user.given_name,
+                'family_name': user.family_name
             }
         }, 200
         
     except Exception as e:
-        return {'error': str(e)}, 400
-    finally:
-        if conn:
-            conn.close() 
+        return {'error': str(e)}, 400 

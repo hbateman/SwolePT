@@ -41,7 +41,7 @@ export const analyzeWorkoutHistory = async (workoutHistory: WorkoutHistory[]): P
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify({ workoutHistory })
+      body: JSON.stringify({ workoutHistory: workoutHistory })
     });
 
     if (response.status === 401) {

@@ -3,7 +3,7 @@ WorkoutHistory model definition.
 """
 from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Text, DateTime
 from sqlalchemy.sql import func
-from ..connection import Base
+from . import Base  # <-- import the shared Base
 
 class WorkoutHistory(Base):
     __tablename__ = 'workout_history'

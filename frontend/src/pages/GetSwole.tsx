@@ -50,8 +50,30 @@ const GetSwole: React.FC = () => {
         throw new Error(workoutHistory.error || 'Failed to fetch workout history');
       }
 
-      // Analyze workout history using OpenAI
-      const analysisResult = await analyzeWorkoutHistory(workoutHistory);
+      console.log('Fetched workout history:', workoutHistory);
+
+      if (!workoutHistory || workoutHistory.length === 0) {
+        throw new Error('No workout history found. Please upload some workout data first.');
+      }
+
+      // Send workout history to analyze endpoint
+      const analyzeResponse = await fetch(`${process.env.REACT_APP_API_URL}/analyze-workouts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ workoutHistory })
+      });
+
+      if (!analyzeResponse.ok) {
+        const errorData = await analyzeResponse.json();
+        throw new Error(errorData.error || 'Failed to analyze workout history');
+      }
+
+      const analysisResult = await analyzeResponse.json();
+      console.log('Analysis result:', analysisResult);
       setAnalysis(analysisResult);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';

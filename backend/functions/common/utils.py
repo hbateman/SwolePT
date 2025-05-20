@@ -1,13 +1,33 @@
 import json
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import boto3
 from botocore.exceptions import ClientError
 
+# Try to load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    # Load environment variables from .env file
+    load_dotenv()
+    print("Loaded environment variables from .env file")
+except ImportError:
+    # python-dotenv is not installed, continue without loading .env
+    print("python-dotenv not installed, environment variables not loaded from .env file")
+except Exception as e:
+    # Handle other exceptions when loading .env file
+    print(f"Error loading .env file: {str(e)}")
+
+def get_env_var(name, default=None):
+    """
+    Get an environment variable with a default value
+    """
+    value = os.environ.get(name, default)
+    if value is None:
+        print(f"Warning: Environment variable {name} is not set")
+    return value
+
 def create_response(status_code, body):
     """
-    Create a standardized API Gateway response
+    Create a standardized API response
     """
     return {
         'statusCode': status_code,
@@ -18,62 +38,6 @@ def create_response(status_code, body):
         },
         'body': json.dumps(body)
     }
-
-def get_db_connection():
-    """
-    Create a connection to the PostgreSQL database
-    """
-    try:
-        # Get database connection details from environment variables
-        host = os.environ.get('DATABASE_HOST')
-        port = os.environ.get('DATABASE_PORT')
-        database = os.environ.get('DATABASE_NAME')
-        user = os.environ.get('DATABASE_USER')
-        password = os.environ.get('DATABASE_PASSWORD')
-        
-        # Create connection
-        conn = psycopg2.connect(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password
-        )
-        
-        return conn
-    except Exception as e:
-        print(f"Error connecting to database: {str(e)}")
-        raise
-
-def execute_query(query, params=None, fetch=True):
-    """
-    Execute a database query and return results
-    """
-    conn = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
-        
-        if fetch:
-            result = cursor.fetchall()
-        else:
-            conn.commit()
-            result = cursor.rowcount
-        
-        return result
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        print(f"Error executing query: {str(e)}")
-        raise
-    finally:
-        if conn:
-            conn.close()
 
 def verify_token(token):
     """

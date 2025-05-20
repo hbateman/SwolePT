@@ -4,11 +4,9 @@ import time
 import json
 import sys
 import subprocess
-import psycopg2
 from botocore.config import Config
 from sqlalchemy import inspect
-from db import engine, Base
-from db.models import User, WorkoutHistory
+from ..db.providers import get_provider
 from common.env import load_environment
 
 def check_docker_container(container_name):
@@ -73,9 +71,9 @@ def wait_for_postgres():
     # Get connection details from environment
     host = os.getenv('DATABASE_HOST')
     port = os.getenv('DATABASE_PORT')
-    user = os.getenv('RDS_DATABASE_USER')
-    password = os.getenv('RDS_DATABASE_PASSWORD')
-    database = os.getenv('RDS_DATABASE_NAME')
+    user = os.getenv('DATABASE_USER')
+    password = os.getenv('DATABASE_PASSWORD')
+    database = os.getenv('DATABASE_NAME')
     
     # Print connection details (without password)
     print(f"Connection details:")
@@ -86,17 +84,12 @@ def wait_for_postgres():
     
     while attempt <= max_attempts:
         try:
-            conn = psycopg2.connect(
-                host=host,
-                port=port,
-                user=user,
-                password=password,
-                database=database
-            )
-            conn.close()
+            provider = get_provider()
+            # Test the connection by making a simple query
+            provider.get_user_by_email("test@example.com")
             print("✅ Successfully connected to PostgreSQL!")
             return True
-        except psycopg2.OperationalError as e:
+        except Exception as e:
             print(f"❌ Connection error: {str(e)}")
             print(f"Waiting for PostgreSQL connection (attempt {attempt}/{max_attempts})...")
             time.sleep(2)
@@ -111,8 +104,8 @@ def load_environment():
     
     # Validate required environment variables
     required_vars = [
-        'DATABASE_HOST', 'DATABASE_PORT', 'RDS_DATABASE_NAME',
-        'RDS_DATABASE_USER', 'RDS_DATABASE_PASSWORD',
+        'DATABASE_HOST', 'DATABASE_PORT', 'DATABASE_NAME',
+        'DATABASE_USER', 'DATABASE_PASSWORD',
         'AWS_ENDPOINT_URL', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY',
         'AWS_REGION', 'UPLOAD_BUCKET_NAME', 'API_GATEWAY_NAME', 'API_STAGE_NAME',
         'LAMBDA_TIMEOUT', 'LAMBDA_MEMORY', 'OPENAI_API_KEY'
@@ -158,85 +151,38 @@ def setup_s3():
         print(f"❌ Error creating S3 bucket: {str(e)}")
         sys.exit(1)
 
-def check_database_tables():
-    """Check if required database tables exist."""
-    inspector = inspect(engine)
-    existing_tables = inspector.get_table_names()
-    required_tables = ['users', 'workout_history']
-    return all(table in existing_tables for table in required_tables)
-
 def setup_database():
     """Set up database tables and migrations."""
     try:
-        # Get database connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Create tables
-        print("Creating database tables...")
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id VARCHAR(255) PRIMARY KEY,
-                username VARCHAR(255) UNIQUE NOT NULL,
-                email VARCHAR(255) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                given_name VARCHAR(255),
-                family_name VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS workouts (
-                id SERIAL PRIMARY KEY,
-                user_id VARCHAR(255) REFERENCES users(user_id),
-                date TIMESTAMP NOT NULL,
-                type VARCHAR(50) NOT NULL,
-                duration INTEGER,
-                notes TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        conn.commit()
+        provider = get_provider()
+        provider.init_db()
         print("✅ Database tables created successfully")
-        
-        # Apply migrations using the CLI tool
-        print("Applying migrations...")
-        from db.management.cli import run_migrations
-        run_migrations()
-        print("✅ Migrations applied successfully")
-        
     except Exception as e:
         print(f"❌ Error setting up database: {str(e)}")
-        raise
-    finally:
-        if conn:
-            conn.close()
+        sys.exit(1)
 
 def wait_for_services():
-    """Wait for LocalStack services to be ready."""
-    print("Waiting for LocalStack services to be ready...")
-    time.sleep(5)  # Give services time to initialize
+    """Wait for all required services to be ready."""
+    if not wait_for_postgres():
+        sys.exit(1)
 
 def main():
     """Main setup function."""
-    try:
-        # Load and validate environment
-        load_environment()
-        
-        # Wait for services
-        wait_for_services()
-        
-        # Set up services
-        setup_s3()
-        setup_database()
-        
-        print("✅ Local development environment setup complete!")
-        
-    except Exception as e:
-        print(f"❌ Error during setup: {str(e)}")
-        sys.exit(1)
+    print("Starting setup...")
+    
+    # Load environment variables
+    load_environment()
+    
+    # Wait for services
+    wait_for_services()
+    
+    # Set up S3
+    setup_s3()
+    
+    # Set up database
+    setup_database()
+    
+    print("✅ Setup completed successfully!")
 
 if __name__ == '__main__':
     main() 
