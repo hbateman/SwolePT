@@ -1,20 +1,23 @@
+"""
+Common utility functions used across the backend.
+
+This module provides shared functionality for:
+- Environment variable management
+- JWT token verification and user extraction
+- API response formatting
+
+This is the single source of truth for these utilities across the entire backend.
+All other modules should import from this file rather than duplicating these functions.
+"""
+
 import json
 import os
 import boto3
 from botocore.exceptions import ClientError
+from .env import load_environment
 
-# Try to load environment variables from .env file if it exists
-try:
-    from dotenv import load_dotenv
-    # Load environment variables from .env file
-    load_dotenv()
-    print("Loaded environment variables from .env file")
-except ImportError:
-    # python-dotenv is not installed, continue without loading .env
-    print("python-dotenv not installed, environment variables not loaded from .env file")
-except Exception as e:
-    # Handle other exceptions when loading .env file
-    print(f"Error loading .env file: {str(e)}")
+# Load environment variables
+load_environment()
 
 def get_env_var(name, default=None):
     """

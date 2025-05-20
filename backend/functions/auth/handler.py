@@ -2,12 +2,7 @@ import json
 import os
 import boto3
 from botocore.exceptions import ClientError
-import sys
-import os
-
-# Add the parent directory to the path to import common utils
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from common.utils import create_response
+from ...common.utils import create_response
 from ..db.providers import get_provider
 
 # Initialize Cognito client

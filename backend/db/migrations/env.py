@@ -5,16 +5,16 @@ from alembic import context
 import os
 import sys
 from pathlib import Path
-from dotenv import load_dotenv
+from common.env import load_environment
 
 # Add the backend directory to sys.path to allow importing our modules
-backend_dir = Path(__file__).parent.parent.parent
+backend_dir = Path(__file__).resolve().parents[2]
 sys.path.append(str(backend_dir))
 
 # Load environment variables from .env file in project root
 env_path = backend_dir.parent / '.env'
 print(f"Loading .env from: {env_path}")
-load_dotenv(env_path)
+load_environment()
 
 # Debug: Print environment variables
 print("Environment variables:")

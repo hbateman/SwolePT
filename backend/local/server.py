@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import jwt
 from db.providers import get_provider
 from db.setup import setup_database
-from dotenv import load_dotenv
+from common.env import load_environment
 import boto3
 import openai
 from .auth import register_user, login_user, require_auth
@@ -44,11 +44,8 @@ logger.info("="*50)
 logger.info("Starting server...")
 logger.info(f"Log file: {log_file}")
 
-# Always load .env from project root
-project_root = Path(__file__).resolve().parents[2]
-env_path = project_root / '.env'
-print(f"[server.py] Loading .env from: {env_path}")
-load_dotenv(env_path)
+# Load environment variables
+load_environment()
 
 # Get JWT secret from environment variables
 JWT_SECRET = os.getenv('JWT_SECRET')

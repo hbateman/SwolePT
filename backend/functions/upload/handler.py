@@ -4,11 +4,7 @@ import boto3
 import base64
 import uuid
 from datetime import datetime
-import sys
-
-# Add the parent directory to the path to import common utils
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from common.utils import create_response, verify_token, get_user_from_token
+from ...common.utils import create_response, verify_token, get_user_from_token
 
 # Initialize S3 client
 s3_client = boto3.client('s3')
